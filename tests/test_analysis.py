@@ -227,10 +227,13 @@ class InterfaceTests(unittest.TestCase):
             app = self.app().run()
             self.assertFalse(app.exception)
             self.assertEqual(app.metric[0].value, "1 660,00 €")
+            self.assertEqual(app.metric[3].label, "Kulut yhteensä")
+            self.assertEqual(app.metric[3].value, "24,25 €")
             self.assertEqual(len(app.dataframe[0].value), 3)
             app.multiselect[0].set_value(["Joukkue B"]).run()
             self.assertFalse(app.exception)
             self.assertEqual(app.metric[0].value, "80,00 €")
+            self.assertEqual(app.metric[3].value, "1,07 €")
             self.assertEqual(len(app.dataframe[0].value), 1)
 
     def test_multiple_days_and_team_filter(self):

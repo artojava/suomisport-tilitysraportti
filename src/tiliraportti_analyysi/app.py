@@ -65,9 +65,14 @@ def main():
                               placeholder="Kaikki joukkueet")
     rows = [row for row in result.summary if not selected or row["Joukkue"] in selected]
     details = [row for row in result.details if not selected or row["Joukkue"] in selected]
-    columns = st.columns(4)
-    for column, label in zip(columns, ["Maksut (€)", "Palvelumaksut (€)", "Komissiot (€)", "Nettotilitys (€)"]):
-        column.metric(label.removesuffix(" (€)"), euro(sum(row[label] for row in rows)))
+    labels = ["Maksut (€)", "Palvelumaksut (€)", "Komissiot (€)",
+              "Kulut yhteensä (€)", "Nettotilitys (€)"]
+    st.html("<style>.st-key-total-costs [data-testid='stMetricValue'] "
+            "{ color: #b91c1c; }</style>")
+    columns = st.columns(len(labels))
+    for column, label in zip(columns, labels):
+        target = column.container(key="total-costs") if label == "Kulut yhteensä (€)" else column
+        target.metric(label.removesuffix(" (€)"), euro(sum(row[label] for row in rows)))
     has_settlement_date = "Tilityspäivä" in rows[0]
     st.subheader("Yhteenveto joukkueittain ja tilityspäivittäin" if has_settlement_date
                  else "Joukkuekohtainen yhteenveto")
