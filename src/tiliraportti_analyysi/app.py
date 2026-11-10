@@ -61,26 +61,46 @@ def main():
         with st.expander("Näytä kohdistusongelmat"):
             for warning in result.warnings:
                 st.text(warning)
-    selected = st.multiselect("Joukkueet", [row["Joukkue"] for row in result.summary],
+    selected = st.multiselect("Joukkueet", sorted({row["Joukkue"] for row in result.summary}),
                               placeholder="Kaikki joukkueet")
     rows = [row for row in result.summary if not selected or row["Joukkue"] in selected]
     details = [row for row in result.details if not selected or row["Joukkue"] in selected]
     columns = st.columns(4)
     for column, label in zip(columns, ["Maksut (€)", "Palvelumaksut (€)", "Komissiot (€)", "Nettotilitys (€)"]):
         column.metric(label.removesuffix(" (€)"), euro(sum(row[label] for row in rows)))
-    st.subheader("Joukkuekohtainen yhteenveto")
+    has_settlement_date = "Tilityspäivä" in rows[0]
+    st.subheader("Yhteenveto joukkueittain ja tilityspäivittäin" if has_settlement_date
+                 else "Joukkuekohtainen yhteenveto")
     config = {key: st.column_config.NumberColumn(key, format="%.2f")
               for key in rows[0] if key.endswith(("(€)", "(%)"))}
-    summary = frame(rows).style.set_properties(
-        subset=["Kulut yhteensä (€)"],
-        **{"background-color": "#fef3c7", "color": "#78350f", "font-weight": "bold"},
+    if has_settlement_date:
+        config["Tilityspäivä"] = st.column_config.DateColumn("Tilityspäivä", format="DD.MM.YYYY")
+    summary = frame(rows).style
+    if has_settlement_date:
+        palette = ["#dbeafe", "#dcfce7", "#fce7f3", "#ede9fe",
+                   "#ffedd5", "#cffafe", "#fef9c3", "#e2e8f0"]
+        days = sorted({row["Tilityspäivä"] for row in result.summary
+                       if row["Tilityspäivä"] is not None})
+        day_colors = {day: palette[index % len(palette)] for index, day in enumerate(days)}
+        summary = summary.apply(
+            lambda row: [f"background-color: {day_colors.get(row['Tilityspäivä'], '#f3f4f6')}; "
+                         "color: #1f2937"] * len(row), axis=1,
+        )
+    else:
+        summary = summary.set_properties(
+            subset=["Kulut yhteensä (€)"],
+            **{"background-color": "#fef3c7"},
+        )
+    summary = summary.set_properties(
+        subset=["Kulut yhteensä (€)"], **{"color": "#b91c1c", "font-weight": "bold"},
     )
     st.dataframe(summary, hide_index=True, width="stretch", column_config=config)
-    st.caption("Kulut esitetään positiivisina vähennyksinä. Prosentit lasketaan joukkueen maksujen "
-               "summasta. Nollasumman prosentti jätetään tyhjäksi. Nettotilitys = maksut − kulut.")
+    st.caption("Kulut esitetään positiivisina vähennyksinä. Prosentit lasketaan yhteenvetorivin "
+               "maksujen summasta. Nollasumman prosentti jätetään tyhjäksi. "
+               "Nettotilitys = maksut − kulut.")
     st.download_button("Lataa yhteenveto (CSV)", csv_bytes(rows), "joukkueyhteenveto.csv", "text/csv")
     st.subheader("Kulut joukkueittain")
-    chart = frame(rows).set_index("Joukkue")[["Palvelumaksut (€)", "Komissiot (€)"]]
+    chart = frame(rows).groupby("Joukkue")[["Palvelumaksut (€)", "Komissiot (€)"]].sum()
     st.bar_chart(chart, stack=True, color=["#2563eb", "#f59e0b"])
     with st.expander("Tarkista lähderivit"):
         st.dataframe(frame(details), hide_index=True, width="stretch")
@@ -89,7 +109,7 @@ def main():
     with st.expander("Miten kulut kohdistetaan?"):
         st.write("Summat luetaan Maksuosuus-sarakkeesta. Rivin omaa joukkuetta käytetään ensin. "
                  "Jos se puuttuu, joukkue haetaan saman maksun Maksu-riveiltä. Maksu erotellaan "
-                 "organisaation, tilityksen viitenumeron ja maksun tunnisteen perusteella. "
+                 "organisaation, tilityksen viitenumeron, maksun tunnisteen ja tilityspäivän perusteella. "
                  "Jos samalle maksulle löytyy useita joukkueita tai joukkuetta ei löydy, rivi jää "
                  "kohdistamatta. Yhteenveto-välilehteä ei summata uudelleen. "
                  "Maksujen lukumäärä tarkoittaa erillisiä maksun tunnisteita joukkueessa.")

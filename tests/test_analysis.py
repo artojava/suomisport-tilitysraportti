@@ -1,5 +1,6 @@
 import csv
 import unittest
+from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO, StringIO
 from pathlib import Path
@@ -44,6 +45,16 @@ def example_bytes():
             ["Testiorganisaatio", "1", team, None, "Komissio", commission],
         ])
     return workbook_bytes(rows)
+
+
+def multiple_days_bytes():
+    return workbook_bytes([
+        ["Org", "1", "id", None, "Komissio", -2, "04.11.2026"],
+        ["Org", "1", "id", "A", "Maksu", 200, datetime(2026, 11, 4, 9)],
+        ["Org", "1", "id", "A", "Maksu", 100, "03.11.2026"],
+        ["Org", "1", "id", None, "Komissio", -1, "2026-11-03T15:30:00"],
+        ["Org", "1", "id", "B", "Maksu", 50, "03.11.2026 12:00"],
+    ], HEADERS + ["Tilitysaika"])
 
 
 def replace_part(data, name, transform):
@@ -118,6 +129,38 @@ class SecurityTests(unittest.TestCase):
 
 
 class AnalysisTests(unittest.TestCase):
+    def test_groups_by_team_and_calendar_day(self):
+        result = analyze(multiple_days_bytes())
+        self.assertEqual([(row["Joukkue"], row["Tilityspäivä"]) for row in result.summary],
+                         [("A", date(2026, 11, 3)), ("B", date(2026, 11, 3)),
+                          ("Kohdistamatta", date(2026, 11, 3)), ("A", date(2026, 11, 4))])
+        self.assertEqual(result.summary[3]["Nettotilitys (€)"], 198)
+        self.assertEqual(result.summary[3]["Kulut (%)"], 1)
+        self.assertEqual(result.summary[3]["Maksuja (kpl)"], 1)
+        self.assertEqual(len(result.warnings), 1)
+        self.assertEqual(result.details[0]["Joukkue"], "A")
+        exported = list(csv.DictReader(
+            StringIO(csv_bytes(result.summary).decode("utf-8-sig")), delimiter=";"))
+        self.assertEqual(exported[3]["Tilityspäivä"], "2026-11-04")
+
+    def test_single_day_and_missing_dates(self):
+        for value in [date(2026, 11, 3), None]:
+            with self.subTest(value=value):
+                result = analyze(workbook_bytes([
+                    ["Org", "1", "id", "A", "Maksu", 100, value],
+                    ["Org", "1", "id", None, "Komissio", -1, value],
+                ], HEADERS + ["Tilitysaika"]))
+                self.assertEqual(len(result.summary), 1)
+                self.assertEqual(result.summary[0]["Tilityspäivä"], value)
+                self.assertEqual(result.summary[0]["Nettotilitys (€)"], 99)
+                self.assertEqual(result.warnings, [])
+
+    def test_invalid_settlement_date(self):
+        with self.assertRaisesRegex(ValueError, "Rivi 2: Tilitysaika"):
+            analyze(workbook_bytes([
+                ["Org", "1", "id", "A", "Maksu", 100, "31.11.2026"],
+            ], HEADERS + ["Tilitysaika"]))
+
     def test_example_totals_and_attribution(self):
         result = analyze(example_bytes())
         self.assertEqual(result.warnings, [])
@@ -189,6 +232,18 @@ class InterfaceTests(unittest.TestCase):
             self.assertFalse(app.exception)
             self.assertEqual(app.metric[0].value, "80,00 €")
             self.assertEqual(len(app.dataframe[0].value), 1)
+
+    def test_multiple_days_and_team_filter(self):
+        with patch("streamlit.file_uploader", return_value=BytesIO(multiple_days_bytes())):
+            app = self.app().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.multiselect[0].options, ["A", "B", "Kohdistamatta"])
+            self.assertEqual(len(app.dataframe[0].value), 4)
+            app.multiselect[0].set_value(["A"]).run()
+            self.assertFalse(app.exception)
+            self.assertEqual(len(app.dataframe[0].value), 2)
+            self.assertEqual(app.metric[0].value, "300,00 €")
+            self.assertIn("Tilityspäivä", app.dataframe[0].value.columns)
 
     def test_invalid_upload_displays_error(self):
         with patch("streamlit.file_uploader", return_value=BytesIO(b"broken")):

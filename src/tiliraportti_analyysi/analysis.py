@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from zipfile import ZipFile
@@ -71,10 +72,11 @@ def validate_workbook(data: bytes) -> None:
 @dataclass(frozen=True)
 class Entry:
     row: int
-    key: tuple[str, str, str]
+    key: tuple[str, str, str, str]
     team: str
     kind: str
     amount: Decimal
+    settlement_date: date | None
 
 
 @dataclass
@@ -99,6 +101,25 @@ def money(value, row: int) -> Decimal:
         raise ValueError(f"Rivi {row}: Maksuosuus ei ole kelvollinen luku ({value!r}).") from None
 
 
+def settlement_date(value, row: int) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if not text(value):
+        return None
+    try:
+        return datetime.fromisoformat(text(value)).date()
+    except ValueError:
+        pass
+    for pattern in ("%d.%m.%Y", "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M"):
+        try:
+            return datetime.strptime(text(value), pattern).date()
+        except ValueError:
+            pass
+    raise ValueError(f"Rivi {row}: Tilitysaika ei ole kelvollinen päivämäärä ({value!r}).")
+
+
 def analyze(data: bytes) -> Result:
     validate_workbook(data)
     try:
@@ -120,6 +141,7 @@ def analyze(data: bytes) -> Result:
             raise ValueError("Puuttuvat sarakkeet: " + ", ".join(sorted(missing)))
         if len(headers) != len(set(headers)):
             raise ValueError("Otsikkorivillä on samannimisiä sarakkeita.")
+        has_settlement_date = "Tilitysaika" in headers
         entries = []
         warnings = []
         for number, values in enumerate(rows, 2):
@@ -134,8 +156,10 @@ def analyze(data: bytes) -> Result:
             key = tuple(text(row.get(col)) for col in (
                 "Organisaatio", "Tilityksen viitenumero", "Maksun tunniste"
             ))
+            day = settlement_date(row.get("Tilitysaika"), number)
+            key += (day.isoformat() if day else "",)
             entries.append(Entry(number, key, text(row.get("Joukkueet")), kind,
-                                 money(row.get("Maksuosuus"), number)))
+                                 money(row.get("Maksuosuus"), number), day))
         if not entries:
             raise ValueError("Tilitysrivit-välilehdellä ei ole analysoitavia rivejä.")
     except ValueError:
@@ -162,18 +186,24 @@ def analyze(data: bytes) -> Result:
                 team = UNALLOCATED
                 warnings.append(f"Rivi {entry.row}: {entry.kind.lower()} jäi kohdistamatta "
                                 f"(maksun tunniste {entry.key[2] or 'puuttuu'}).")
-        totals[team][entry.kind] += entry.amount
+        group = (team, entry.settlement_date)
+        totals[group][entry.kind] += entry.amount
         if entry.key[2]:
-            payments[team].add(entry.key)
+            payments[group].add(entry.key)
         details.append({"Excel-rivi": entry.row, "Joukkue": team,
+                        **({"Tilityspäivä": entry.settlement_date} if has_settlement_date else {}),
                         "Maksun tunniste": entry.key[2], "Tyyppi": entry.kind,
                         "Maksuosuus (€)": entry.amount})
     summary = []
-    for team, values in sorted(totals.items()):
+    for (team, day), values in sorted(
+        totals.items(), key=lambda item: (item[0][1] or date.min, item[0][0])
+    ):
         gross = values["Maksu"]
         service, commission = -values["Palvelumaksu"], -values["Komissio"]
         costs = service + commission
-        summary.append({"Joukkue": team, "Maksuja (kpl)": len(payments[team]),
+        summary.append({"Joukkue": team,
+                        **({"Tilityspäivä": day} if has_settlement_date else {}),
+                        "Maksuja (kpl)": len(payments[(team, day)]),
                         "Maksut (€)": gross, "Palvelumaksut (€)": service,
                         "Komissiot (€)": commission, "Kulut yhteensä (€)": costs,
                         "Palvelumaksut (%)": service / gross * 100 if gross else None,

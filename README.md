@@ -16,7 +16,10 @@ Raahaa `.xlsx`-tiedosto latausalueelle tai valitse se tiedostonvalitsimella.
 Voit säilyttää omia raportteja paikallisessa `esimerkki-data`-kansiossa, jota ei lisätä Gitiin.
 
 Työkalu näyttää joukkueittain maksut, palvelumaksut, komissiot, kulujen prosenttiosuudet
-ja nettotilityksen. Voit suodattaa joukkueita, tarkastaa kohdistetut lähderivit ja ladata
+ja nettotilityksen. Kun raportissa on `Tilitysaika`-sarake, yhteenveto eritellään myös
+tilityspäivittäin. Saman päivän kellonajat yhdistetään. Päivä näkyy myös lähderiveillä
+ja CSV-viennissä; ilman saraketta yhteenveto säilyy joukkuekohtaisena.
+Voit suodattaa joukkueita, tarkastaa kohdistetut lähderivit ja ladata
 yhteenvedon sekä lähderivit Excelissä avattavana CSV:nä. CSV sisältää valitun rajauksen.
 Tiedosto käsitellään sovelluksen palvelimen muistissa eikä sovellus tallenna sitä levylle.
 Paikallisesti ajettaessa palvelin on oma tietokoneesi. Julkisessa palvelussa tiedosto
@@ -57,13 +60,16 @@ ja [Streamlitin asetusten dokumentaatioon](https://docs.streamlit.io/develop/api
 - Summat luetaan vain `Maksuosuus`-sarakkeesta. Tuettuja tyyppejä ovat `Maksu`,
   `Palvelumaksu` ja `Komissio`. Tuntematon tyyppi tai virheellinen summa ilmoitetaan virheenä.
 - Rivin oma joukkue on ensisijainen. Puuttuva joukkue haetaan saman maksun `Maksu`-riveiltä.
-  Avaimessa käytetään organisaatiota, tilityksen viitenumeroa ja maksun tunnistetta.
+  Avaimessa käytetään organisaatiota, tilityksen viitenumeroa, maksun tunnistetta ja tilityspäivää.
   Kohdistus ei riipu rivijärjestyksestä. Epäselvät rivit näytetään `Kohdistamatta`-ryhmässä;
   usean joukkueen yhteisen maksun kuluja ei jaeta automaattisesti.
 - Kulut näytetään vastakkaismerkkisinä lähderivin summaan nähden: veloitus on positiivinen
   kulu ja kuluhyvitys negatiivinen. Nettotilitys = maksut − palvelumaksut − komissiot.
-- Kukin kuluprosentti = kyseinen kulu / joukkueen maksut × 100. Nollasummalla prosentti
-  on tyhjä. Maksujen lukumäärä on joukkueen erillisten maksuavainten määrä.
+- `Tilitysaika` voi sisältää Excel-päivämäärän, suomalaisen päivämäärän (myös kellonajalla)
+  tai ISO-päivämäärän. Tyhjä päivä näytetään tyhjänä omassa ryhmässään;
+  virheellinen päivämäärä ilmoitetaan virheenä.
+- Kukin kuluprosentti = kyseinen kulu / yhteenvetorivin maksut × 100. Nollasummalla prosentti
+  on tyhjä. Maksujen lukumäärä on ryhmän erillisten maksuavainten määrä.
 - Laskenta käyttää desimaalilukuja. Käyttöliittymä näyttää summat kahden desimaalin tarkkuudella.
 - `Yhteenveto`-välilehteä ei lasketa mukaan, jotta summat eivät kahdennu.
   Vain `.xlsx` on tuettu; vanha `.xls` pitää tallentaa ensin `.xlsx`-muotoon.
