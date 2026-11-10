@@ -1,0 +1,22 @@
+[project]
+name = "tiliraportti-analyysi"
+version = "0.1.0"
+description = "Joukkuekohtainen tilitysraporttien analyysityökalu"
+readme = "README.md"
+authors = [
+    { name = "Arto Javanainen", email = "arto.javanainen@jyu.fi" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "defusedxml>=0.7.1,<1",
+    "openpyxl>=3.1.5,<4",
+    "pandas>=2.2,<4",
+    "streamlit>=1.49,<2",
+]
+
+[project.scripts]
+tiliraportti-analyysi = "tiliraportti_analyysi:main"
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14.0"]
+build-backend = "uv_build"
