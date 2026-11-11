@@ -19,3 +19,6 @@ wheels/
 
 # Real settlement reports must not be published
 esimerkki-data/
+
+# OS related files
+.DS_Store
